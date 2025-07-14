@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'presentation/pages/notes_list_page.dart';
+import 'presentation/pages/home_page.dart';
 
 void main() => runApp(const ProviderScope(child: MyApp()));
 
@@ -14,6 +14,6 @@ class MyApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
           useMaterial3: true,
         ),
-        home: const NotesListPage(),
+        home: const HomePage(), // ← single-Scaffold root
       );
 }
