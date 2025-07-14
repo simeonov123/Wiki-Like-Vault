@@ -1,0 +1,26 @@
+name: wlv
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.5.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # ─── Database ─────────────────────────────────────────────────────────────
+  sqflite: ^2.3.2
+  sqflite_common_ffi: ^2.3.2      # desktop/dev builds
+  path: ^1.9.0
+
+  # ─── State-management ─────────────────────────────────────────────────────
+  flutter_riverpod: ^2.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
