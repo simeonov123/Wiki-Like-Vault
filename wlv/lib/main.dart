@@ -12,7 +12,7 @@ class MyApp extends StatelessWidget {
         title: 'Wiki-Like Vault',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-          useMaterial3: true,
+          useMaterial3: true, //asd
         ),
         home: const HomePage(), // ← single-Scaffold root
       );
