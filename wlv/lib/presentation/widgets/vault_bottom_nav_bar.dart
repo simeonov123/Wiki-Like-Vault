@@ -13,9 +13,12 @@ class VaultBottomNavBar extends StatelessWidget {
   Widget build(BuildContext context) => BottomNavigationBar(
         currentIndex: currentIndex,
         onTap: onTap,
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.note), label: 'Notes'),
           BottomNavigationBarItem(icon: Icon(Icons.movie), label: 'Movies'),
+          BottomNavigationBarItem(icon: Icon(Icons.list), label: 'Entries'),
+          BottomNavigationBarItem(icon: Icon(Icons.book), label: 'Journal'),
         ],
       );
 }
