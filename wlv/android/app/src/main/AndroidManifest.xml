@@ -1,4 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- internet for HTTP / image download -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- camera capture -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+
+    <!-- read user photos (API 33+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+
+    <!-- fallback for API ≤ 32 -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+
     <application
         android:label="wlv"
         android:name="${applicationName}"

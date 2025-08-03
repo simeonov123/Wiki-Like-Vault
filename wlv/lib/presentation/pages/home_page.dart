@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import '../widgets/vault_bottom_nav_bar.dart';
 import '../widgets/floating_nav_balls.dart';
 import '../providers/entry_providers.dart';
@@ -9,9 +12,11 @@ import 'entries_list_page.dart';
 import 'journal_list_page.dart';
 import 'add_entry_page.dart';
 import 'add_journal_entry_page.dart';
+import '../providers/entry_bg_provider.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
+
   @override
   ConsumerState<HomePage> createState() => _HomePageState();
 }
@@ -28,7 +33,28 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(_titles[_idx])),
+        appBar: AppBar(
+          title: Text(_titles[_idx]),
+
+          // When we’re on the Entries tab (index 1) show a “choose photo” action
+          actions: [
+            if (_idx == 1)
+              IconButton(
+                tooltip: 'Change background',
+                icon: const Icon(Icons.photo),
+                onPressed: () async {
+                  final picker = ImagePicker();
+                  final XFile? x =
+                      await picker.pickImage(source: ImageSource.gallery);
+                  if (x != null) {
+                    // store the chosen image so EntriesListBody shows it
+                    ref.read(entryBgProvider.notifier).state = File(x.path);
+                  }
+                },
+              ),
+          ],
+        ),
+
         body: Stack(
           children: [
             IndexedStack(index: _idx, children: _tabs),
