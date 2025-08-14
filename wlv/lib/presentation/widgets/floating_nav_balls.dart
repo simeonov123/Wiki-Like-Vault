@@ -96,10 +96,12 @@ class _FloatingNavBallsState extends State<FloatingNavBalls>
         b.vel *= pow(_friction, dt).toDouble();
         if (b.vel.distance < _stopCutoff) b.vel = Offset.zero;
 
-        if (b.pos.dx <= 0 && b.vel.dx < 0 || b.pos.dx >= maxX && b.vel.dx > 0)
+        if (b.pos.dx <= 0 && b.vel.dx < 0 || b.pos.dx >= maxX && b.vel.dx > 0) {
           b.vel = Offset(-b.vel.dx, b.vel.dy);
-        if (b.pos.dy <= 0 && b.vel.dy < 0 || b.pos.dy >= maxY && b.vel.dy > 0)
+        }
+        if (b.pos.dy <= 0 && b.vel.dy < 0 || b.pos.dy >= maxY && b.vel.dy > 0) {
           b.vel = Offset(b.vel.dx, -b.vel.dy);
+        }
 
         b.pos = Offset(b.pos.dx.clamp(0, maxX), b.pos.dy.clamp(0, maxY));
       }

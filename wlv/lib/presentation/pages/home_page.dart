@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+
 import '../widgets/vault_bottom_nav_bar.dart';
 import '../widgets/floating_nav_balls.dart';
 import '../providers/entry_providers.dart';
@@ -26,68 +27,81 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   static const _tabs = [
     HomeMessageBody(),
-    EntriesListBody(),
+    EntriesListBody(),  // list-only; background handled here
     JournalListBody(),
   ];
   static const _titles = ['Home', 'Entries', 'Journal'];
 
+  Future<void> _pickBg() async {
+    final picker = ImagePicker();
+    final x = await picker.pickImage(source: ImageSource.gallery);
+    if (x != null) {
+      ref.read(entryBgProvider.notifier).state = File(x.path);
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: Text(_titles[_idx]),
+  Widget build(BuildContext context) {
+    final File? bgFile = ref.watch(entryBgProvider);
 
-          // When we’re on the Entries tab (index 1) show a “choose photo” action
-          actions: [
-            if (_idx == 1)
-              IconButton(
-                tooltip: 'Change background',
-                icon: const Icon(Icons.photo),
-                onPressed: () async {
-                  final picker = ImagePicker();
-                  final XFile? x =
-                      await picker.pickImage(source: ImageSource.gallery);
-                  if (x != null) {
-                    // store the chosen image so EntriesListBody shows it
-                    ref.read(entryBgProvider.notifier).state = File(x.path);
-                  }
-                },
-              ),
-          ],
-        ),
-
-        body: Stack(
-          children: [
-            IndexedStack(index: _idx, children: _tabs),
-            if (_idx == 0) const FloatingNavBalls(),
-          ],
-        ),
-        floatingActionButton: switch (_idx) {
-          1 => FloatingActionButton(
-              onPressed: () async {
-                await Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const AddEntryPage()));
-                ref.invalidate(entriesFutureProvider);
-              },
-              child: const Icon(Icons.add),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_titles[_idx]),
+        actions: [
+          if (_idx == 1)
+            IconButton(
+              tooltip: 'Change background',
+              icon: const Icon(Icons.photo),
+              onPressed: _pickBg,
             ),
-          2 => FloatingActionButton(
-              onPressed: () async {
-                await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const AddJournalEntryPage()));
-                ref.invalidate(journalsFutureProvider);
-              },
-              child: const Icon(Icons.add),
-            ),
-          _ => null,
-        },
-        // show bottom bar only when NOT on Home
-        bottomNavigationBar: _idx == 0
-            ? null
-            : VaultBottomNavBar(
-                currentIndex: _idx,
-                onTap: (i) => setState(() => _idx = i),
+        ],
+      ),
+      body: Stack(
+        children: [
+          // Render entries background & scrim only on Entries tab
+          if (_idx == 1) ...[
+            if (bgFile != null)
+              Positioned.fill(
+                child: Image.file(bgFile, fit: BoxFit.cover),
               ),
-      );
+            Positioned.fill(
+              child: Container(color: Colors.black.withOpacity(0.35)),
+            ),
+          ],
+          IndexedStack(index: _idx, children: _tabs),
+          if (_idx == 0) const FloatingNavBalls(),
+        ],
+      ),
+      floatingActionButton: switch (_idx) {
+        1 => FloatingActionButton(
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AddEntryPage()),
+              );
+              ref.invalidate(entriesFutureProvider);
+            },
+            child: const Icon(Icons.add),
+          ),
+        2 => FloatingActionButton(
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const AddJournalEntryPage()),
+              );
+              ref.invalidate(journalsFutureProvider);
+            },
+            child: const Icon(Icons.add),
+          ),
+        _ => null,
+      },
+      bottomNavigationBar: _idx == 0
+          ? null
+          : VaultBottomNavBar(
+              currentIndex: _idx,
+              onTap: (i) => setState(() => _idx = i),
+            ),
+    );
+  }
 }
