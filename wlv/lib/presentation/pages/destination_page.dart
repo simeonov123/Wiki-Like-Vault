@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,11 +16,25 @@ class DestinationPage extends ConsumerWidget {
   final Ball ball;
   const DestinationPage({super.key, required this.ball});
 
-  Future<void> _pickBg(WidgetRef ref) async {
+  Future<void> _pickBg(BuildContext context, WidgetRef ref) async {
     final picker = ImagePicker();
     final x = await picker.pickImage(source: ImageSource.gallery);
     if (x != null) {
-      ref.read(entryBgProvider.notifier).state = File(x.path);
+      await ref.read(entryBgProvider.notifier).setBackgroundFromPath(x.path);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Background updated')),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearBg(BuildContext context, WidgetRef ref) async {
+    await ref.read(entryBgProvider.notifier).clearBackground();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Background reset')),
+      );
     }
   }
 
@@ -32,13 +45,17 @@ class DestinationPage extends ConsumerWidget {
 
     final Widget background = isEntries
         ? (bgFile != null
-            ? Image.file(bgFile, fit: BoxFit.cover)
+            ? Image.file(
+                bgFile,
+                fit: BoxFit.cover,
+                // gapless prevents flicker when rapidly switching
+                gaplessPlayback: true,
+              )
             : Container(color: ball.color))
         : Container(color: ball.color);
 
-    final Widget body = isEntries
-        ? const EntriesListBody()
-        : const JournalListBody();
+    final Widget body =
+        isEntries ? const EntriesListBody() : const JournalListBody();
 
     return Scaffold(
       appBar: isEntries
@@ -48,7 +65,12 @@ class DestinationPage extends ConsumerWidget {
                 IconButton(
                   tooltip: 'Change background',
                   icon: const Icon(Icons.photo),
-                  onPressed: () => _pickBg(ref),
+                  onPressed: () => _pickBg(context, ref),
+                ),
+                IconButton(
+                  tooltip: 'Reset background',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () => _clearBg(context, ref),
                 ),
               ],
             )
@@ -70,7 +92,6 @@ class DestinationPage extends ConsumerWidget {
   }
 }
 
-/* ───────────── FABs (kept here) ───────────── */
 class EntriesFab extends ConsumerWidget {
   const EntriesFab({super.key});
   @override

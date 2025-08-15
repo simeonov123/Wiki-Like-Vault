@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -27,7 +26,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   static const _tabs = [
     HomeMessageBody(),
-    EntriesListBody(),  // list-only; background handled here
+    EntriesListBody(),
     JournalListBody(),
   ];
   static const _titles = ['Home', 'Entries', 'Journal'];
@@ -36,7 +35,21 @@ class _HomePageState extends ConsumerState<HomePage> {
     final picker = ImagePicker();
     final x = await picker.pickImage(source: ImageSource.gallery);
     if (x != null) {
-      ref.read(entryBgProvider.notifier).state = File(x.path);
+      await ref.read(entryBgProvider.notifier).setBackgroundFromPath(x.path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Background updated')),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearBg() async {
+    await ref.read(entryBgProvider.notifier).clearBackground();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Background reset')),
+      );
     }
   }
 
@@ -48,21 +61,30 @@ class _HomePageState extends ConsumerState<HomePage> {
       appBar: AppBar(
         title: Text(_titles[_idx]),
         actions: [
-          if (_idx == 1)
+          if (_idx == 1) ...[
             IconButton(
               tooltip: 'Change background',
               icon: const Icon(Icons.photo),
               onPressed: _pickBg,
             ),
+            IconButton(
+              tooltip: 'Reset background',
+              icon: const Icon(Icons.refresh),
+              onPressed: _clearBg,
+            ),
+          ],
         ],
       ),
       body: Stack(
         children: [
-          // Render entries background & scrim only on Entries tab
           if (_idx == 1) ...[
             if (bgFile != null)
               Positioned.fill(
-                child: Image.file(bgFile, fit: BoxFit.cover),
+                child: Image.file(
+                  bgFile,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                ),
               ),
             Positioned.fill(
               child: Container(color: Colors.black.withOpacity(0.35)),

@@ -86,7 +86,6 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
       ),
       builder: (ctx) {
         const items = Category.values;
-        // Height fits content naturally when using mainAxisSize: min.
         return Material(
           color: Theme.of(ctx).colorScheme.surface,
           child: Column(
@@ -268,8 +267,7 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   const SizedBox(height: 18),
 
                   // Description
-                  TextField
-                  (
+                  TextField(
                     controller: _descC,
                     decoration: _dec(
                       'Description',
@@ -331,25 +329,14 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Bigger gradient stars with drag
-                  Center(
-                    child: RatingBar.builder(
-                      initialRating: _rating.clamp(1, 10).toDouble(),
-                      minRating: 1,
-                      itemCount: 10,
-                      itemSize: 28, // bigger stars
-                      allowHalfRating: false,
-                      updateOnDrag: true,
-                      unratedColor: cs.outlineVariant.withOpacity(0.35),
-                      itemPadding: const EdgeInsets.symmetric(horizontal: 3),
-                      itemBuilder: (context, index) => Icon(
-                        Icons.star_rounded,
-                        color: _colorForIndex(index, 10),
-                      ),
-                      onRatingUpdate: (value) {
-                        setState(() => _rating = value.roundToDouble());
-                      },
-                    ),
+                  // Responsive gradient stars: dynamically sized to fit one row
+                  _ResponsiveRatingBar(
+                    itemCount: 10,
+                    rating: _rating,
+                    unratedColor: cs.outlineVariant.withOpacity(0.35),
+                    colorForIndex: (i, count) => _colorForIndex(i, count),
+                    onChanged: (val) =>
+                        setState(() => _rating = val.roundToDouble()),
                   ),
                 ],
               ),
@@ -357,6 +344,72 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A responsive wrapper around RatingBar.builder that computes a star size
+/// which always fits `itemCount` items on one row without wrapping.
+class _ResponsiveRatingBar extends StatelessWidget {
+  final int itemCount;
+  final double rating;
+  final double minRating;
+  final bool allowHalf;
+  final double horizontalItemPadding; // per-item symmetric horizontal padding
+  final Color? unratedColor;
+  final Color Function(int index, int count) colorForIndex;
+  final ValueChanged<double> onChanged;
+
+  const _ResponsiveRatingBar({
+    required this.itemCount,
+    required this.rating,
+    required this.colorForIndex,
+    required this.onChanged,
+    this.minRating = 1,
+    this.allowHalf = false,
+    this.horizontalItemPadding = 3.0,
+    this.unratedColor,
+    super.key,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        // Total horizontal padding contributed by RatingBar's itemPadding.
+        // itemPadding is applied to EACH item, not just the gaps,
+        // so total extra width = itemCount * (left+right) = itemCount * (2 * horizontalItemPadding).
+        final totalPadding = itemCount * (2 * horizontalItemPadding);
+
+        // Compute the max item size that fits in one line.
+        final maxWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.of(ctx).size.width;
+
+        // Prevent negative/zero division if layout is tight.
+        final availableForIcons = (maxWidth - totalPadding).clamp(60.0, 4000.0);
+        double itemSize = availableForIcons / itemCount;
+
+        // Clamp to sensible visual bounds.
+        itemSize = itemSize.clamp(18.0, 48.0);
+
+        return RatingBar.builder(
+          initialRating: rating.clamp(minRating, itemCount.toDouble()),
+          minRating: minRating,
+          itemCount: itemCount,
+          itemSize: itemSize,
+          allowHalfRating: allowHalf,
+          updateOnDrag: true,
+          unratedColor: unratedColor,
+          itemPadding:
+              EdgeInsets.symmetric(horizontal: horizontalItemPadding),
+          itemBuilder: (context, index) => Icon(
+            Icons.star_rounded,
+            color: colorForIndex(index, itemCount),
+          ),
+          onRatingUpdate: onChanged,
+        );
+      },
     );
   }
 }
