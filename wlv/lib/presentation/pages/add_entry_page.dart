@@ -1,10 +1,30 @@
+import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 
 import '../../domain/entities/category.dart';
 import '../../domain/entities/entry.dart';
 import '../providers/entry_providers.dart';
+
+/* ───────────── helpers to persist per-entry blur without DB changes ───────────── */
+double _readBlurFromLinks(List<String> links, {double fallback = 8}) {
+  for (final s in links) {
+    if (s.startsWith('wlv:blur=')) {
+      final v = double.tryParse(s.split('=').last);
+      if (v != null) return v.clamp(0, 24);
+    }
+  }
+  return fallback;
+}
+
+List<String> _writeBlurToLinks(List<String> old, double blur) {
+  final kept = old.where((s) => !s.startsWith('wlv:blur=')).toList();
+  return ['wlv:blur=${blur.toStringAsFixed(2)}', ...kept];
+}
+/* ─────────────────────────────────────────────────────────────────────────────── */
 
 class AddEntryPage extends ConsumerStatefulWidget {
   const AddEntryPage({super.key});
@@ -18,6 +38,9 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   double _rating = 5; // 1..10
   Category _cat = Category.book;
 
+  String? _cardBgPath;        // skin path
+  double _blur = 8;           // 0..24 visual blur (preview/list/details)
+
   @override
   void dispose() {
     _titleC.dispose();
@@ -28,11 +51,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   // Negative (red) → Neutral (teal) → Positive (yellow)
   Color _colorForIndex(int index, int count) {
     final t = count <= 1 ? 1.0 : index / (count - 1);
-    if (t <= 0.5) {
-      return Color.lerp(Colors.red, Colors.teal, t / 0.5)!;
-    } else {
-      return Color.lerp(Colors.teal, Colors.yellow, (t - 0.5) / 0.5)!;
-    }
+    if (t <= 0.5) return Color.lerp(Colors.red, Colors.teal, t / 0.5)!;
+    return Color.lerp(Colors.teal, Colors.yellow, (t - 0.5) / 0.5)!;
   }
 
   InputDecoration _dec(
@@ -69,6 +89,48 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       suffixIcon: iconButton,
+    );
+  }
+
+  Future<void> _pickCardBg() async {
+    final x = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (x != null) setState(() => _cardBgPath = x.path);
+  }
+
+  void _clearCardBg() => setState(() => _cardBgPath = null);
+
+  Future<void> _previewCardBg() async {
+    if (_cardBgPath == null) return;
+    final path = _cardBgPath!;
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Preview',
+      pageBuilder: (_, __, ___) {
+        return Stack(
+          children: [
+            // blur the whole backdrop
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Container(color: Colors.black.withOpacity(0.35)),
+              ),
+            ),
+            Center(
+              child: Hero(
+                tag: path,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.file(
+                    File(path),
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -138,8 +200,9 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                               child: Text(
                                 cat.name,
                                 style: Theme.of(c).textTheme.titleMedium?.copyWith(
-                                      fontWeight:
-                                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
                                       color: isSelected
                                           ? scheme.onSecondaryContainer
                                           : scheme.onSurface,
@@ -176,10 +239,12 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     final tt = Theme.of(context).textTheme;
 
     // adaptive target height for description editor
-    double _descTargetHeight(BuildContext ctx) {
+    double descTargetHeight(BuildContext ctx) {
       final h = MediaQuery.of(ctx).size.height;
       return (h * 0.35).clamp(180.0, 420.0);
     }
+
+    final radius = BorderRadius.circular(18);
 
     return Scaffold(
       appBar: AppBar(
@@ -206,10 +271,13 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                 final d = _descC.text.trim();
                 if (t.isEmpty) return;
 
+                final links = _writeBlurToLinks(const [], _blur);
                 final entry = Entry(
                   category: _cat,
                   title: t,
                   description: d,
+                  imagePaths: _cardBgPath == null ? const [] : <String>[_cardBgPath!],
+                  links: links,
                   createdAt: DateTime.now(),
                   rating: _rating.round(),
                 );
@@ -226,11 +294,85 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            // Section: Details
+            // ── Background controls (grouped card) ──────────────────────────
             Container(
               decoration: BoxDecoration(
                 color: cs.surface,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: radius,
+                border: Border.all(color: cs.outlineVariant),
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Card Background',
+                      style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 10),
+                  // Use Wrap to avoid Row overflows on tiny widths
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: _pickCardBg,
+                        icon: const Icon(Icons.image_rounded),
+                        label: const Text('Choose'),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: _cardBgPath == null ? null : _previewCardBg,
+                        icon: const Icon(Icons.zoom_out_map_rounded),
+                        label: const Text('Preview'),
+                      ),
+                      IconButton.filledTonal(
+                        tooltip: 'Clear',
+                        onPressed: _cardBgPath == null ? null : _clearCardBg,
+                        icon: const Icon(Icons.delete_outline_rounded),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: cs.secondaryContainer,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text('Blur ${_blur.toStringAsFixed(0)}',
+                            style: tt.labelLarge?.copyWith(
+                                color: cs.onSecondaryContainer)),
+                      ),
+                    ],
+                  ),
+                  if (_cardBgPath != null) ...[
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(_cardBgPath!),
+                        fit: BoxFit.cover,
+                        height: 140,
+                        width: double.infinity,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Slider(
+                    value: _blur,
+                    min: 0,
+                    max: 24,
+                    divisions: 24,
+                    label: '${_blur.round()}',
+                    onChanged: (v) => setState(() => _blur = v),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Details section with frosted fields over the selected bg ────
+            Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: radius,
                 border: Border.all(color: cs.outlineVariant),
                 boxShadow: [
                   BoxShadow(
@@ -241,46 +383,57 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                   ),
                 ],
               ),
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-              child: Column(
+              child: Stack(
                 children: [
-                  TextFormField(
-                    readOnly: true,
-                    onTap: _showCategoryPicker,
-                    decoration: _dec(
-                      'Category',
-                      hint: _cat.name,
-                      icon: Icons.category_outlined,
-                      onIconTap: _showCategoryPicker,
+                  if (_cardBgPath != null && File(_cardBgPath!).existsSync())
+                    Positioned.fill(
+                      child: Image.file(File(_cardBgPath!), fit: BoxFit.cover),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-
-                  TextField(
-                    controller: _titleC,
-                    decoration: _dec(
-                      'Title',
-                      hint: 'e.g., The Pragmatic Programmer',
-                      icon: Icons.title_outlined,
-                    ),
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Description — large, fills area, scrolls inside
-                  SizedBox(
-                    height: _descTargetHeight(context),
-                    child: TextField(
-                      controller: _descC,
-                      expands: true,
-                      maxLines: null,
-                      minLines: null,
-                      keyboardType: TextInputType.multiline,
-                      textAlignVertical: TextAlignVertical.top,
-                      decoration: _dec(
-                        'Description',
-                        hint: 'Optional notes, thoughts, highlights…',
-                        icon: Icons.notes_outlined,
+                  // NO dimming — keep image fully visible
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                    child: _Frosted(
+                      blur: _blur,
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            readOnly: true,
+                            onTap: _showCategoryPicker,
+                            decoration: _dec(
+                              'Category',
+                              hint: _cat.name,
+                              icon: Icons.category_outlined,
+                              onIconTap: _showCategoryPicker,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          TextField(
+                            controller: _titleC,
+                            decoration: _dec(
+                              'Title',
+                              hint: 'e.g., The Pragmatic Programmer',
+                              icon: Icons.title_outlined,
+                            ),
+                            textInputAction: TextInputAction.next,
+                          ),
+                          const SizedBox(height: 18),
+                          SizedBox(
+                            height: descTargetHeight(context),
+                            child: TextField(
+                              controller: _descC,
+                              expands: true,
+                              maxLines: null,
+                              minLines: null,
+                              keyboardType: TextInputType.multiline,
+                              textAlignVertical: TextAlignVertical.top,
+                              decoration: _dec(
+                                'Description',
+                                hint: 'Optional notes, thoughts, highlights…',
+                                icon: Icons.notes_outlined,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -290,11 +443,11 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
 
             const SizedBox(height: 22),
 
-            // Section: Rating
+            // ── Rating section (unchanged visually) ────────────────────────
             Container(
               decoration: BoxDecoration(
                 color: cs.surface,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: radius,
                 border: Border.all(color: cs.outlineVariant),
                 boxShadow: [
                   BoxShadow(
@@ -313,9 +466,8 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Rating',
-                          style: tt.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          )),
+                          style: tt.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700)),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
@@ -332,7 +484,6 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-
                   _ResponsiveRatingBar(
                     itemCount: 10,
                     rating: _rating,
@@ -367,7 +518,7 @@ class _ResponsiveRatingBar extends StatelessWidget {
     required this.colorForIndex,
     required this.onChanged,
     this.unratedColor,
-    this.minRating = 1.0,
+    this.minRating = 1,
     this.allowHalf = false,
     this.horizontalItemPadding = 2.0,
   });
@@ -400,6 +551,39 @@ class _ResponsiveRatingBar extends StatelessWidget {
           onRatingUpdate: onChanged,
         );
       },
+    );
+  }
+}
+
+/* ─────────────────────── Frosted glass helper ─────────────────────── */
+class _Frosted extends StatelessWidget {
+  final double blur;
+  final BorderRadiusGeometry radius;
+  final Widget child;
+
+  const _Frosted({
+    required this.child,
+    this.blur = 8,
+    this.radius = const BorderRadius.all(Radius.circular(18)),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: radius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surface.withOpacity(0.70),
+            borderRadius: radius,
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          child: child,
+        ),
+      ),
     );
   }
 }

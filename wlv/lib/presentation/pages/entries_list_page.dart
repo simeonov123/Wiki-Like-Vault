@@ -1,9 +1,22 @@
+import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/entry_providers.dart';
 import '../../domain/entities/entry.dart';
 import 'entry_details_sheet.dart';
+
+/* read blur from links meta */
+double _readBlurFromLinks(List<String> links, {double fallback = 8}) {
+  for (final s in links) {
+    if (s.startsWith('wlv:blur=')) {
+      final v = double.tryParse(s.split('=').last);
+      if (v != null) return v.clamp(0, 24);
+    }
+  }
+  return fallback;
+}
 
 class EntriesListBody extends ConsumerWidget {
   const EntriesListBody({super.key});
@@ -54,77 +67,152 @@ class _EntryCard extends ConsumerWidget {
     final favs = ref.watch(favoritesProvider);
     final isFav = favs.contains(entry.id);
 
+    final String? bgPath =
+        (entry.imagePaths.isNotEmpty && entry.imagePaths.first.trim().isNotEmpty)
+            ? entry.imagePaths.first
+            : null;
+    final blur = _readBlurFromLinks(entry.links);
+
+    final borderRadius = BorderRadius.circular(14);
+
     return Card(
       elevation: 0,
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: borderRadius,
         side: BorderSide(color: cs.outlineVariant),
       ),
       color: cs.surface,
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                backgroundColor: cs.secondaryContainer,
-                foregroundColor: cs.onSecondaryContainer,
-                child: Text(entry.category.name.characters.first.toUpperCase()),
+        child: Stack(
+          fit: StackFit.passthrough,
+          children: [
+            if (bgPath != null && File(bgPath).existsSync())
+              Positioned.fill(
+                child: Image.file(
+                  File(bgPath),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
+
+            // Frosted content panel so image stays fully visible
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: _Frosted(
+                blur: blur,
+                radius: BorderRadius.circular(12),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _highlightText(entry.title, query, tt.titleMedium!, cs,
-                        maxLines: 1),
-                    const SizedBox(height: 6),
-                    _StarsRow(rating: entry.rating, maxCount: 10),
-                    const SizedBox(height: 8),
-                    _highlightText(
-                      '★ ${entry.rating} — ${entry.description.trim()}',
-                      query,
-                      tt.bodyMedium!,
-                      cs,
-                      maxLines: 4, // up to 4 lines, auto height if less
+                    // Avatar
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: CircleAvatar(
+                        backgroundColor: cs.secondaryContainer,
+                        foregroundColor: cs.onSecondaryContainer,
+                        child: Text(
+                          entry.category.name.characters.first.toUpperCase(),
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _shortDate(entry.createdAt),
-                      style: tt.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
+                    const SizedBox(width: 12),
+
+                    // Textual content
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _highlightText(
+                            entry.title,
+                            query,
+                            tt.titleMedium!,
+                            cs,
+                            maxLines: 1,
+                          ),
+                          const SizedBox(height: 6),
+                          // Stars wrap if they must to avoid row overflow on small widths
+                          Wrap(
+                            spacing: 3,
+                            runSpacing: 0,
+                            children: List.generate(
+                              entry.rating.clamp(0, 10),
+                              (i) => Icon(
+                                Icons.star_rounded,
+                                size: MediaQuery.of(context).size.width < 360
+                                    ? 16
+                                    : (MediaQuery.of(context).size.width < 400
+                                        ? 18
+                                        : 20),
+                                color: _colorForIndex(i, 10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _highlightText(
+                            '★ ${entry.rating} — ${entry.description.trim()}',
+                            query,
+                            tt.bodyMedium!,
+                            cs,
+                            maxLines: 3,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _shortDate(entry.createdAt),
+                            style: tt.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Trailing actions — fixed width so they never overflow
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 44,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints:
+                                const BoxConstraints.tightFor(width: 44, height: 44),
+                            tooltip: isFav ? 'Unfavorite' : 'Favorite',
+                            onPressed: () => ref
+                                .read(favoritesProvider.notifier)
+                                .toggle(entry.id),
+                            icon: Icon(
+                              isFav
+                                  ? Icons.star_rounded
+                                  : Icons.star_border_rounded,
+                              color: isFav ? Colors.amber : cs.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Icon(Icons.chevron_right),
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: isFav ? 'Unfavorite' : 'Favorite',
-                    onPressed: () =>
-                        ref.read(favoritesProvider.notifier).toggle(entry.id),
-                    icon: Icon(
-                      isFav
-                          ? Icons.star_rounded
-                          : Icons.star_border_rounded,
-                      color: isFav ? Colors.amber : cs.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Icon(Icons.chevron_right),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  static Color _colorForIndex(int index, int count) {
+    final t = count <= 1 ? 1.0 : index / (count - 1);
+    if (t <= 0.5) {
+      return Color.lerp(Colors.red, Colors.teal, t / 0.5)!;
+    } else {
+      return Color.lerp(Colors.teal, Colors.yellow, (t - 0.5) / 0.5)!;
+    }
   }
 
   static Text _highlightText(
@@ -172,38 +260,35 @@ class _EntryCard extends ConsumerWidget {
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
-/* ───────────────────── Stars (gradient, N of rating) ───────────────────── */
+/* local frosted helper */
+class _Frosted extends StatelessWidget {
+  final double blur;
+  final BorderRadiusGeometry radius;
+  final Widget child;
 
-class _StarsRow extends StatelessWidget {
-  final int rating; // 1..10
-  final int maxCount;
-
-  const _StarsRow({required this.rating, required this.maxCount});
-
-  Color _colorForIndex(int index, int count) {
-    final t = count <= 1 ? 1.0 : index / (count - 1);
-    if (t <= 0.5) {
-      return Color.lerp(Colors.red, Colors.teal, t / 0.5)!;
-    } else {
-      return Color.lerp(Colors.teal, Colors.yellow, (t - 0.5) / 0.5)!;
-    }
-  }
+  const _Frosted({
+    required this.child,
+    this.blur = 8,
+    this.radius = const BorderRadius.all(Radius.circular(12)),
+  });
 
   @override
   Widget build(BuildContext context) {
-    final count = rating.clamp(0, maxCount);
-    final width = MediaQuery.of(context).size.width;
-    final starSize = width < 360 ? 16.0 : (width < 400 ? 18.0 : 20.0);
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(count, (i) {
-        return Padding(
-          padding: const EdgeInsets.only(right: 3),
-          child: Icon(Icons.star_rounded,
-              size: starSize, color: _colorForIndex(i, maxCount)),
-        );
-      }),
+    final cs = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: radius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surface.withOpacity(0.70),
+            borderRadius: radius,
+            border: Border.all(color: cs.outlineVariant),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          child: child,
+        ),
+      ),
     );
   }
 }

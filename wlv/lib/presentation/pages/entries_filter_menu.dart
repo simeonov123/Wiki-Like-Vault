@@ -95,7 +95,6 @@ class _FilterSheetContent extends StatefulWidget {
     required this.tempFavoritesOnly,
     required this.onApply,
     required this.onClear,
-    super.key,
   });
 
   @override
@@ -197,7 +196,7 @@ class _FilterSheetContentState extends State<_FilterSheetContent> {
                       prefixIcon: const Icon(Icons.search),
                       isDense: true,
                       filled: true,
-                      fillColor: cs.surfaceVariant.withOpacity(0.35),
+                      fillColor: cs.surfaceContainerHighest.withOpacity(0.35),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -304,7 +303,7 @@ class _FilterSheetContentState extends State<_FilterSheetContent> {
                   const SizedBox(height: 8),
                   Container(
                     decoration: BoxDecoration(
-                      color: cs.surfaceVariant.withOpacity(0.25),
+                      color: cs.surfaceContainerHighest.withOpacity(0.25),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: cs.outlineVariant),
                     ),

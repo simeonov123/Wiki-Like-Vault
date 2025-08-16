@@ -1,9 +1,28 @@
+import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../domain/entities/category.dart';
 import '../../domain/entities/entry.dart';
 import '../providers/entry_providers.dart';
+
+/* reuse the blur helpers from Add page */
+double _readBlurFromLinks(List<String> links, {double fallback = 8}) {
+  for (final s in links) {
+    if (s.startsWith('wlv:blur=')) {
+      final v = double.tryParse(s.split('=').last);
+      if (v != null) return v.clamp(0, 24);
+    }
+  }
+  return fallback;
+}
+
+List<String> _writeBlurToLinks(List<String> old, double blur) {
+  final kept = old.where((s) => !s.startsWith('wlv:blur=')).toList();
+  return ['wlv:blur=${blur.toStringAsFixed(2)}', ...kept];
+}
 
 class EditEntryPage extends ConsumerStatefulWidget {
   final Entry entry;
@@ -19,6 +38,9 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
   late double _rating;
   late Category _cat;
 
+  String? _cardBgPath; // first imagePaths item
+  late double _blur;
+
   late final Entry _initial;
 
   @override
@@ -29,6 +51,9 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
     _descC = TextEditingController(text: _initial.description);
     _rating = _initial.rating.toDouble();
     _cat = _initial.category;
+    _cardBgPath =
+        _initial.imagePaths.isNotEmpty ? _initial.imagePaths.first : null;
+    _blur = _readBlurFromLinks(_initial.links);
   }
 
   @override
@@ -42,15 +67,15 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
       _titleC.text.trim() != _initial.title ||
       _descC.text.trim() != _initial.description ||
       _rating.round() != _initial.rating ||
-      _cat != _initial.category;
+      _cat != _initial.category ||
+      (_initial.imagePaths.isNotEmpty ? _initial.imagePaths.first : null) !=
+          _cardBgPath ||
+      _readBlurFromLinks(_initial.links) != _blur;
 
   Color _colorForIndex(int index, int count) {
     final t = count <= 1 ? 1.0 : index / (count - 1);
-    if (t <= 0.5) {
-      return Color.lerp(Colors.red, Colors.teal, t / 0.5)!;
-    } else {
-      return Color.lerp(Colors.teal, Colors.yellow, (t - 0.5) / 0.5)!;
-    }
+    if (t <= 0.5) return Color.lerp(Colors.red, Colors.teal, t / 0.5)!;
+    return Color.lerp(Colors.teal, Colors.yellow, (t - 0.5) / 0.5)!;
   }
 
   InputDecoration _dec(
@@ -87,6 +112,44 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       suffixIcon: iconButton,
+    );
+  }
+
+  Future<void> _pickCardBg() async {
+    final x = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (x != null) setState(() => _cardBgPath = x.path);
+  }
+
+  void _clearCardBg() => setState(() => _cardBgPath = null);
+
+  Future<void> _previewCardBg() async {
+    if (_cardBgPath == null) return;
+    final path = _cardBgPath!;
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Preview',
+      pageBuilder: (_, __, ___) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Container(color: Colors.black.withOpacity(0.35)),
+              ),
+            ),
+            Center(
+              child: Hero(
+                tag: path,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.file(File(path), fit: BoxFit.contain),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -131,16 +194,23 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
                     final cat = items[i];
                     final isSelected = cat == _cat;
                     final scheme = Theme.of(c).colorScheme;
+
                     return InkWell(
                       onTap: () => Navigator.of(ctx).pop(cat),
                       child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        margin:
+                            const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         decoration: BoxDecoration(
-                          color: isSelected ? scheme.secondaryContainer : scheme.surface,
+                          color: isSelected
+                              ? scheme.secondaryContainer
+                              : scheme.surface,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: isSelected ? scheme.secondary : scheme.outlineVariant,
+                            color: isSelected
+                                ? scheme.secondary
+                                : scheme.outlineVariant,
                           ),
                         ),
                         child: Row(
@@ -159,7 +229,8 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
                               ),
                             ),
                             if (isSelected)
-                              Icon(Icons.check_rounded, color: scheme.secondary),
+                              Icon(Icons.check_rounded,
+                                  color: scheme.secondary),
                           ],
                         ),
                       ),
@@ -208,10 +279,12 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    double _descTargetHeight(BuildContext ctx) {
+    double descTargetHeight(BuildContext ctx) {
       final h = MediaQuery.of(ctx).size.height;
       return (h * 0.35).clamp(180.0, 420.0);
     }
+
+    final radius = BorderRadius.circular(18);
 
     return WillPopScope(
       onWillPop: _confirmDiscardIfNeeded,
@@ -252,6 +325,9 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
                     title: t,
                     description: d,
                     rating: _rating.round(),
+                    imagePaths:
+                        _cardBgPath == null ? const [] : <String>[_cardBgPath!],
+                    links: _writeBlurToLinks(_initial.links, _blur),
                   );
 
                   await ref.read(updateEntryUcProvider).call(updated);
@@ -266,45 +342,147 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
-              _SectionCard(
+              // ── Background controls (grouped) ────────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: radius,
+                  border: Border.all(color: cs.outlineVariant),
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TextFormField(
-                      readOnly: true,
-                      onTap: _showCategoryPicker,
-                      decoration: _dec(
-                        'Category',
-                        hint: _cat.name,
-                        icon: Icons.category_outlined,
-                        onIconTap: _showCategoryPicker,
-                      ),
+                    Text('Card Background',
+                        style:
+                            tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: _pickCardBg,
+                          icon: const Icon(Icons.image_rounded),
+                          label: const Text('Choose'),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: _cardBgPath == null ? null : _previewCardBg,
+                          icon: const Icon(Icons.zoom_out_map_rounded),
+                          label: const Text('Preview'),
+                        ),
+                        IconButton.filledTonal(
+                          tooltip: 'Clear',
+                          onPressed: _cardBgPath == null ? null : _clearCardBg,
+                          icon: const Icon(Icons.delete_outline_rounded),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: cs.secondaryContainer,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text('Blur ${_blur.toStringAsFixed(0)}',
+                              style: tt.labelLarge?.copyWith(
+                                  color: cs.onSecondaryContainer)),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 18),
-                    TextField(
-                      controller: _titleC,
-                      decoration: _dec(
-                        'Title',
-                        hint: 'e.g., The Pragmatic Programmer',
-                        icon: Icons.title_outlined,
+                    if (_cardBgPath != null) ...[
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(
+                          File(_cardBgPath!),
+                          fit: BoxFit.cover,
+                          height: 140,
+                          width: double.infinity,
+                        ),
                       ),
-                      textInputAction: TextInputAction.next,
+                    ],
+                    const SizedBox(height: 8),
+                    Slider(
+                      value: _blur,
+                      min: 0,
+                      max: 24,
+                      divisions: 24,
+                      label: '${_blur.round()}',
+                      onChanged: (v) => setState(() => _blur = v),
                     ),
-                    const SizedBox(height: 18),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
 
-                    // Description — large, fills area, scrolls inside
-                    SizedBox(
-                      height: _descTargetHeight(context),
-                      child: TextField(
-                        controller: _descC,
-                        expands: true,
-                        maxLines: null,
-                        minLines: null,
-                        keyboardType: TextInputType.multiline,
-                        textAlignVertical: TextAlignVertical.top,
-                        decoration: _dec(
-                          'Description',
-                          hint: 'Optional notes, thoughts, highlights…',
-                          icon: Icons.notes_outlined,
+              // ── Details fields on frosted panel over bg ──────────────────
+              Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: radius,
+                  border: Border.all(color: cs.outlineVariant),
+                  boxShadow: [
+                    BoxShadow(
+                      color: cs.shadow.withOpacity(0.06),
+                      blurRadius: 18,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    if (_cardBgPath != null && File(_cardBgPath!).existsSync())
+                      Positioned.fill(
+                        child: Image.file(File(_cardBgPath!), fit: BoxFit.cover),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                      child: _Frosted(
+                        blur: _blur,
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              readOnly: true,
+                              onTap: _showCategoryPicker,
+                              decoration: _dec(
+                                'Category',
+                                hint: _cat.name,
+                                icon: Icons.category_outlined,
+                                onIconTap: _showCategoryPicker,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            TextField(
+                              controller: _titleC,
+                              decoration: _dec(
+                                'Title',
+                                hint: 'e.g., The Pragmatic Programmer',
+                                icon: Icons.title_outlined,
+                              ),
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 18),
+                            SizedBox(
+                              height: descTargetHeight(context),
+                              child: TextField(
+                                controller: _descC,
+                                expands: true,
+                                maxLines: null,
+                                minLines: null,
+                                keyboardType: TextInputType.multiline,
+                                textAlignVertical: TextAlignVertical.top,
+                                decoration: _dec(
+                                  'Description',
+                                  hint:
+                                      'Optional notes, thoughts, highlights…',
+                                  icon: Icons.notes_outlined,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -314,7 +492,22 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
 
               const SizedBox(height: 22),
 
-              _SectionCard(
+              // ── Rating ───────────────────────────────────────────────────
+              Container(
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: radius,
+                  border: Border.all(color: cs.outlineVariant),
+                  boxShadow: [
+                    BoxShadow(
+                      color: cs.shadow.withOpacity(0.06),
+                      blurRadius: 18,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -322,32 +515,32 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('Rating',
-                            style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                            style:
+                                tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: cs.secondaryContainer,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
                             '${_rating.round()} / 10',
-                            style: tt.labelLarge?.copyWith(
-                              color: cs.onSecondaryContainer,
-                            ),
+                            style:
+                                tt.labelLarge?.copyWith(color: cs.onSecondaryContainer),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-
-                    // Responsive manual star row (drag/tap)
                     LayoutBuilder(
                       builder: (ctx, constraints) {
                         const count = 10;
                         const itemPadding = 3.0;
-                        final totalPadding = count * (2 * itemPadding);
+                        const totalPadding = count * (2 * itemPadding);
                         final maxWidth = constraints.maxWidth;
-                        final available = (maxWidth - totalPadding).clamp(60.0, 4000.0);
+                        final available =
+                            (maxWidth - totalPadding).clamp(60.0, 4000.0);
                         final itemSize =
                             (available / count).clamp(18.0, 48.0).toDouble();
 
@@ -401,30 +594,35 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
   }
 }
 
-class _SectionCard extends StatelessWidget {
+/* same frosted helper */
+class _Frosted extends StatelessWidget {
+  final double blur;
+  final BorderRadiusGeometry radius;
   final Widget child;
-  const _SectionCard({required this.child});
+
+  const _Frosted({
+    required this.child,
+    this.blur = 8,
+    this.radius = const BorderRadius.all(Radius.circular(18)),
+  });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withOpacity(0.06),
-            blurRadius: 18,
-            spreadRadius: 1,
-            offset: const Offset(0, 6),
+    return ClipRRect(
+      borderRadius: radius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.surface.withOpacity(0.70),
+            borderRadius: radius,
+            border: Border.all(color: cs.outlineVariant),
           ),
-        ],
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          child: child,
+        ),
       ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: child,
     );
   }
 }
