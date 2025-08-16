@@ -17,6 +17,46 @@ class EntryDao {
         'rating': e.rating,
       });
 
+  /// Bulk insert used by the seeder.
+  Future<void> insertMany(List<Entry> items) async {
+    final db = await AppDatabase.instance.db;
+    await db.transaction((txn) async {
+      for (final e in items) {
+        await txn.insert(_table, {
+          'category': e.category.index,
+          'title': e.title,
+          'description': e.description,
+          'images': jsonEncode(e.imagePaths),
+          'links': jsonEncode(e.links),
+          'created_at': e.createdAt.millisecondsSinceEpoch,
+          'rating': e.rating,
+        });
+      }
+    });
+  }
+
+  Future<int> update(Entry e) async {
+    return (await AppDatabase.instance.db).update(
+      _table,
+      {
+        'category': e.category.index,
+        'title': e.title,
+        'description': e.description,
+        'images': jsonEncode(e.imagePaths),
+        'links': jsonEncode(e.links),
+        'created_at': e.createdAt.millisecondsSinceEpoch,
+        'rating': e.rating,
+      },
+      where: 'id = ?',
+      whereArgs: [e.id],
+    );
+  }
+
+  Future<void> deleteById(int id) async {
+    await (await AppDatabase.instance.db)
+        .delete(_table, where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<List<Entry>> fetchAll() async {
     final rows =
         await (await AppDatabase.instance.db).query(_table, orderBy: 'id DESC');

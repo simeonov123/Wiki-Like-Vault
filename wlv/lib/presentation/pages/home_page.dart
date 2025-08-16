@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,6 +14,7 @@ import 'journal_list_page.dart';
 import 'add_entry_page.dart';
 import 'add_journal_entry_page.dart';
 import '../providers/entry_bg_provider.dart';
+import 'entries_filter_menu.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -53,6 +55,15 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  Future<void> _seed55() async {
+    ref.invalidate(entriesFutureProvider); // refresh list
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Seeded 55 mock entries')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final File? bgFile = ref.watch(entryBgProvider);
@@ -63,6 +74,11 @@ class _HomePageState extends ConsumerState<HomePage> {
         actions: [
           if (_idx == 1) ...[
             IconButton(
+              tooltip: 'Filter & sort',
+              icon: const Icon(Icons.filter_list_rounded),
+              onPressed: () => showEntriesFilterSheet(context: context, ref: ref),
+            ),
+            IconButton(
               tooltip: 'Change background',
               icon: const Icon(Icons.photo),
               onPressed: _pickBg,
@@ -72,6 +88,12 @@ class _HomePageState extends ConsumerState<HomePage> {
               icon: const Icon(Icons.refresh),
               onPressed: _clearBg,
             ),
+            if (kDebugMode)
+              IconButton(
+                tooltip: 'Seed 55 mock entries',
+                onPressed: _seed55,
+                icon: const Icon(Icons.cloud_download_rounded),
+              ),
           ],
         ],
       ),

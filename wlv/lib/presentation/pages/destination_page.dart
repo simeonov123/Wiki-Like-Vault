@@ -11,6 +11,7 @@ import 'entries_list_page.dart';
 import 'journal_list_page.dart';
 import 'add_entry_page.dart';
 import 'add_journal_entry_page.dart';
+import 'entries_filter_menu.dart';
 
 class DestinationPage extends ConsumerWidget {
   final Ball ball;
@@ -48,7 +49,6 @@ class DestinationPage extends ConsumerWidget {
             ? Image.file(
                 bgFile,
                 fit: BoxFit.cover,
-                // gapless prevents flicker when rapidly switching
                 gaplessPlayback: true,
               )
             : Container(color: ball.color))
@@ -62,6 +62,12 @@ class DestinationPage extends ConsumerWidget {
           ? AppBar(
               title: const Text('Entries'),
               actions: [
+                IconButton(
+                  tooltip: 'Filter & sort',
+                  icon: const Icon(Icons.filter_list_rounded),
+                  onPressed: () =>
+                      showEntriesFilterSheet(context: context, ref: ref),
+                ),
                 IconButton(
                   tooltip: 'Change background',
                   icon: const Icon(Icons.photo),

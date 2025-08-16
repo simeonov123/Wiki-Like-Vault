@@ -25,7 +25,6 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     super.dispose();
   }
 
-  // Map star index [0..count-1] to a gradient color:
   // Negative (red) → Neutral (teal) → Positive (yellow)
   Color _colorForIndex(int index, int count) {
     final t = count <= 1 ? 1.0 : index / (count - 1);
@@ -36,7 +35,6 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     }
   }
 
-  // Consistent modern input decoration (icons on the RIGHT via suffixIcon)
   InputDecoration _dec(
     String label, {
     String? hint,
@@ -177,13 +175,18 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
+    // adaptive target height for description editor
+    double _descTargetHeight(BuildContext ctx) {
+      final h = MediaQuery.of(ctx).size.height;
+      return (h * 0.35).clamp(180.0, 420.0);
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('New Entry'),
         centerTitle: true,
       ),
 
-      // Bottom action bar with a prominent Save button
       bottomNavigationBar: SafeArea(
         top: false,
         child: Padding(
@@ -241,40 +244,45 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
               child: Column(
                 children: [
-                  // Category picker (read-only field opens bottom sheet)
                   TextFormField(
                     readOnly: true,
                     onTap: _showCategoryPicker,
                     decoration: _dec(
                       'Category',
                       hint: _cat.name,
-                      icon: Icons.category_outlined,      // right icon
-                      onIconTap: _showCategoryPicker,     // icon tap also opens
+                      icon: Icons.category_outlined,
+                      onIconTap: _showCategoryPicker,
                     ),
                   ),
                   const SizedBox(height: 18),
 
-                  // Title
                   TextField(
                     controller: _titleC,
                     decoration: _dec(
                       'Title',
                       hint: 'e.g., The Pragmatic Programmer',
-                      icon: Icons.title_outlined,         // right icon
+                      icon: Icons.title_outlined,
                     ),
                     textInputAction: TextInputAction.next,
                   ),
                   const SizedBox(height: 18),
 
-                  // Description
-                  TextField(
-                    controller: _descC,
-                    decoration: _dec(
-                      'Description',
-                      hint: 'Optional notes, thoughts, highlights…',
-                      icon: Icons.notes_outlined,         // right icon
+                  // Description — large, fills area, scrolls inside
+                  SizedBox(
+                    height: _descTargetHeight(context),
+                    child: TextField(
+                      controller: _descC,
+                      expands: true,
+                      maxLines: null,
+                      minLines: null,
+                      keyboardType: TextInputType.multiline,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: _dec(
+                        'Description',
+                        hint: 'Optional notes, thoughts, highlights…',
+                        icon: Icons.notes_outlined,
+                      ),
                     ),
-                    maxLines: 4,
                   ),
                 ],
               ),
@@ -301,35 +309,30 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header row with current rating
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Rating',
-                        style: tt.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                      Text('Rating',
+                          style: tt.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          )),
                       Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
                           color: cs.secondaryContainer,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
                           '${_rating.round()} / 10',
-                          style: tt.labelLarge?.copyWith(
-                            color: cs.onSecondaryContainer,
-                          ),
+                          style: tt.labelLarge
+                              ?.copyWith(color: cs.onSecondaryContainer),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
 
-                  // Responsive gradient stars: dynamically sized to fit one row
                   _ResponsiveRatingBar(
                     itemCount: 10,
                     rating: _rating,
@@ -348,14 +351,12 @@ class _AddEntryPageState extends ConsumerState<AddEntryPage> {
   }
 }
 
-/// A responsive wrapper around RatingBar.builder that computes a star size
-/// which always fits `itemCount` items on one row without wrapping.
 class _ResponsiveRatingBar extends StatelessWidget {
   final int itemCount;
   final double rating;
   final double minRating;
   final bool allowHalf;
-  final double horizontalItemPadding; // per-item symmetric horizontal padding
+  final double horizontalItemPadding;
   final Color? unratedColor;
   final Color Function(int index, int count) colorForIndex;
   final ValueChanged<double> onChanged;
@@ -365,33 +366,22 @@ class _ResponsiveRatingBar extends StatelessWidget {
     required this.rating,
     required this.colorForIndex,
     required this.onChanged,
-    this.minRating = 1,
-    this.allowHalf = false,
-    this.horizontalItemPadding = 3.0,
     this.unratedColor,
-    super.key,
+    this.minRating = 1.0,
+    this.allowHalf = false,
+    this.horizontalItemPadding = 2.0,
   });
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (ctx, constraints) {
-        // Total horizontal padding contributed by RatingBar's itemPadding.
-        // itemPadding is applied to EACH item, not just the gaps,
-        // so total extra width = itemCount * (left+right) = itemCount * (2 * horizontalItemPadding).
         final totalPadding = itemCount * (2 * horizontalItemPadding);
-
-        // Compute the max item size that fits in one line.
         final maxWidth = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : MediaQuery.of(ctx).size.width;
-
-        // Prevent negative/zero division if layout is tight.
-        final availableForIcons = (maxWidth - totalPadding).clamp(60.0, 4000.0);
-        double itemSize = availableForIcons / itemCount;
-
-        // Clamp to sensible visual bounds.
-        itemSize = itemSize.clamp(18.0, 48.0);
+        final available = (maxWidth - totalPadding).clamp(60.0, 4000.0);
+        final itemSize = (available / itemCount).clamp(18.0, 48.0);
 
         return RatingBar.builder(
           initialRating: rating.clamp(minRating, itemCount.toDouble()),
