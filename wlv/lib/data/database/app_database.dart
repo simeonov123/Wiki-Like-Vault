@@ -15,16 +15,14 @@ class AppDatabase {
     final path = join(await getDatabasesPath(), 'vault.db');
     _db = await openDatabase(
       path,
-      version: 3, // ⬅️ bump to v3
+      version: 5, // ⬅️ bumped to v5 for bg_color_hex migration
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
     return _db!;
   }
 
-  /* ── Callbacks ────────────────────────────────────────────────────────── */
   Future _onCreate(Database db, int version) async {
-    // notes
     await db.execute('''
       CREATE TABLE notes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +31,6 @@ class AppDatabase {
       )
     ''');
 
-    // movies
     await db.execute('''
       CREATE TABLE movies(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +39,6 @@ class AppDatabase {
       )
     ''');
 
-    // NEW v3 tables
     await _createEntryTable(db);
     await _createJournalTable(db);
   }
@@ -61,6 +57,16 @@ class AppDatabase {
       await _createEntryTable(db);
       await _createJournalTable(db);
     }
+    if (oldV < 4) {
+      // legacy column (int) – safe to leave
+      await db.execute('ALTER TABLE entries ADD COLUMN bg_color INTEGER');
+    }
+    if (oldV < 5) {
+      // new column using HEX string
+      await db.execute(
+        "ALTER TABLE entries ADD COLUMN bg_color_hex TEXT DEFAULT '#FFFFFFFF'"
+      );
+    }
   }
 
   Future _createEntryTable(Database db) async => db.execute('''
@@ -69,10 +75,11 @@ class AppDatabase {
         category INTEGER NOT NULL,
         title TEXT NOT NULL,
         description TEXT NOT NULL,
-        images TEXT NOT NULL,     -- JSON list
-        links TEXT NOT NULL,      -- JSON list
+        images TEXT NOT NULL,
+        links TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        rating INTEGER NOT NULL
+        rating INTEGER NOT NULL,
+        bg_color_hex TEXT DEFAULT '#FFFFFFFF'
       )
     ''');
 
@@ -86,7 +93,6 @@ class AppDatabase {
       )
     ''');
 
-  /* ── Desktop FFI ──────────────────────────────────────────────────────── */
   void _initFfiIfNeeded() {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       sqfliteFfiInit();

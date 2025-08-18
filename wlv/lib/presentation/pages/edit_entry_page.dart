@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import '../../domain/entities/category.dart';
 import '../../domain/entities/entry.dart';
@@ -40,8 +41,20 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
 
   String? _cardBgPath; // first imagePaths item
   late double _blur;
+  Color? _bgColor; // solid background color when no image
 
   late final Entry _initial;
+
+  Color? _parseHex(String? hex) {
+    if (hex == null || hex.isEmpty) return null;
+    var h = hex.replaceFirst('#', '');
+    if (h.length == 6) h = 'FF$h'; // add alpha if missing
+    return Color(int.parse(h, radix: 16));
+  }
+
+  /// Convert a nullable Color to nullable hex (AARRGGBB with '#')
+  String? _hexOrNull(Color? c) =>
+      c == null ? null : Entry.colorToHex(c);
 
   @override
   void initState() {
@@ -54,6 +67,9 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
     _cardBgPath =
         _initial.imagePaths.isNotEmpty ? _initial.imagePaths.first : null;
     _blur = _readBlurFromLinks(_initial.links);
+
+    // Prefer an explicit color; otherwise hydrate from persisted hex.
+    _bgColor = _initial.bgColor ?? _parseHex(_initial.bgColorHex);
   }
 
   @override
@@ -63,14 +79,31 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
     super.dispose();
   }
 
-  bool get _hasChanges =>
-      _titleC.text.trim() != _initial.title ||
-      _descC.text.trim() != _initial.description ||
-      _rating.round() != _initial.rating ||
-      _cat != _initial.category ||
-      (_initial.imagePaths.isNotEmpty ? _initial.imagePaths.first : null) !=
-          _cardBgPath ||
-      _readBlurFromLinks(_initial.links) != _blur;
+  bool get _hasChanges {
+    final titleChanged = _titleC.text.trim() != _initial.title;
+    final descChanged = _descC.text.trim() != _initial.description;
+    final ratingChanged = _rating.round() != _initial.rating;
+    final catChanged = _cat != _initial.category;
+    final imageChanged =
+        (_initial.imagePaths.isNotEmpty ? _initial.imagePaths.first : null) !=
+            _cardBgPath;
+    final blurChanged =
+        _readBlurFromLinks(_initial.links) != _blur;
+
+    // Compare color by HEX so it works regardless of how initial was provided
+    final String? initialHex = _initial.bgColorHex ??
+        (_initial.bgColor == null ? null : Entry.colorToHex(_initial.bgColor!));
+    final String? currentHex = _hexOrNull(_bgColor);
+    final colorChanged = initialHex != currentHex;
+
+    return titleChanged ||
+        descChanged ||
+        ratingChanged ||
+        catChanged ||
+        imageChanged ||
+        blurChanged ||
+        colorChanged;
+  }
 
   Color _colorForIndex(int index, int count) {
     final t = count <= 1 ? 1.0 : index / (count - 1);
@@ -153,6 +186,41 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
     );
   }
 
+  Future<void> _pickBgColor() async {
+    Color temp = _bgColor ?? Theme.of(context).colorScheme.surface;
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pick background color'),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: temp,
+            onColorChanged: (c) => temp = c,
+            enableAlpha: true,
+            displayThumbColor: true,
+            paletteType: PaletteType.hsvWithHue,
+            pickerAreaHeightPercent: 0.85,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() => _bgColor = temp);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Select'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _clearBgColor() => setState(() => _bgColor = null);
+
   Future<void> _showCategoryPicker() async {
     final selected = await showModalBottomSheet<Category>(
       context: context,
@@ -198,19 +266,13 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
                     return InkWell(
                       onTap: () => Navigator.of(ctx).pop(cat),
                       child: Container(
-                        margin:
-                            const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         decoration: BoxDecoration(
-                          color: isSelected
-                              ? scheme.secondaryContainer
-                              : scheme.surface,
+                          color: isSelected ? scheme.secondaryContainer : scheme.surface,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: isSelected
-                                ? scheme.secondary
-                                : scheme.outlineVariant,
+                            color: isSelected ? scheme.secondary : scheme.outlineVariant,
                           ),
                         ),
                         child: Row(
@@ -219,18 +281,15 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
                               child: Text(
                                 cat.name,
                                 style: Theme.of(c).textTheme.titleMedium?.copyWith(
-                                      fontWeight: isSelected
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                      color: isSelected
-                                          ? scheme.onSecondaryContainer
-                                          : scheme.onSurface,
-                                    ),
+                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                  color: isSelected
+                                      ? scheme.onSecondaryContainer
+                                      : scheme.onSurface,
+                                ),
                               ),
                             ),
                             if (isSelected)
-                              Icon(Icons.check_rounded,
-                                  color: scheme.secondary),
+                              Icon(Icons.check_rounded, color: scheme.secondary),
                           ],
                         ),
                       ),
@@ -288,305 +347,312 @@ class _EditEntryPageState extends ConsumerState<EditEntryPage> {
 
     return WillPopScope(
       onWillPop: _confirmDiscardIfNeeded,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Edit Entry'),
-          centerTitle: true,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () async {
-              if (await _confirmDiscardIfNeeded()) {
-                if (mounted) Navigator.pop(context);
-              }
-            },
+      child: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(), // dismiss keyboard
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Edit Entry'),
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () async {
+                if (await _confirmDiscardIfNeeded()) {
+                  if (mounted) Navigator.pop(context);
+                }
+              },
+            ),
+            actions: [
+              IconButton(
+                tooltip: 'Pick background color',
+                icon: const Icon(Icons.color_lens_outlined),
+                onPressed: _pickBgColor,
+              ),
+              IconButton(
+                tooltip: 'Clear color',
+                icon: const Icon(Icons.format_color_reset_rounded),
+                onPressed: _bgColor == null ? null : _clearBgColor,
+              ),
+            ],
           ),
-        ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: SizedBox(
-              height: 54,
-              child: FilledButton.icon(
-                icon: const Icon(Icons.save),
-                label: const Text('Save Changes'),
-                style: FilledButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+
+          bottomNavigationBar: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: SizedBox(
+                height: 54,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save Changes'),
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
+                  onPressed: () async {
+                    final t = _titleC.text.trim();
+                    final d = _descC.text.trim();
+                    if (t.isEmpty) return;
+
+                    final updated = _initial.copyWith(
+                      category: _cat,
+                      title: t,
+                      description: d,
+                      rating: _rating.round(),
+                      imagePaths: _cardBgPath == null ? const [] : <String>[_cardBgPath!],
+                      links: _writeBlurToLinks(_initial.links, _blur),
+                      bgColor: _bgColor,                              // for immediate UI
+                      bgColorHex: _hexOrNull(_bgColor),               // ← PERSIST THIS
+                    );
+
+                    await ref.read(updateEntryUcProvider).call(updated);
+                    ref.invalidate(entriesFutureProvider);
+                    if (mounted) Navigator.pop<Entry>(context, updated);
+                  },
                 ),
-                onPressed: () async {
-                  final t = _titleC.text.trim();
-                  final d = _descC.text.trim();
-                  if (t.isEmpty) return;
-
-                  final updated = _initial.copyWith(
-                    category: _cat,
-                    title: t,
-                    description: d,
-                    rating: _rating.round(),
-                    imagePaths:
-                        _cardBgPath == null ? const [] : <String>[_cardBgPath!],
-                    links: _writeBlurToLinks(_initial.links, _blur),
-                  );
-
-                  await ref.read(updateEntryUcProvider).call(updated);
-                  ref.invalidate(entriesFutureProvider);
-                  if (mounted) Navigator.pop<Entry>(context, updated);
-                },
               ),
             ),
           ),
-        ),
-        body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            children: [
-              // ── Background controls (grouped) ────────────────────────────
-              Container(
-                decoration: BoxDecoration(
-                  color: cs.surface,
-                  borderRadius: radius,
-                  border: Border.all(color: cs.outlineVariant),
-                ),
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Card Background',
-                        style:
-                            tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        FilledButton.tonalIcon(
-                          onPressed: _pickCardBg,
-                          icon: const Icon(Icons.image_rounded),
-                          label: const Text('Choose'),
-                        ),
-                        FilledButton.tonalIcon(
-                          onPressed: _cardBgPath == null ? null : _previewCardBg,
-                          icon: const Icon(Icons.zoom_out_map_rounded),
-                          label: const Text('Preview'),
-                        ),
-                        IconButton.filledTonal(
-                          tooltip: 'Clear',
-                          onPressed: _cardBgPath == null ? null : _clearCardBg,
-                          icon: const Icon(Icons.delete_outline_rounded),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: cs.secondaryContainer,
-                            borderRadius: BorderRadius.circular(10),
+
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              children: [
+                // ── Background controls (grouped) ────────────────────────────
+                Container(
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: radius,
+                    border: Border.all(color: cs.outlineVariant),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Card Background',
+                          style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          FilledButton.tonalIcon(
+                            onPressed: _pickCardBg,
+                            icon: const Icon(Icons.image_rounded),
+                            label: const Text('Choose'),
                           ),
-                          child: Text('Blur ${_blur.toStringAsFixed(0)}',
-                              style: tt.labelLarge?.copyWith(
-                                  color: cs.onSecondaryContainer)),
+                          FilledButton.tonalIcon(
+                            onPressed: _cardBgPath == null ? null : _previewCardBg,
+                            icon: const Icon(Icons.zoom_out_map_rounded),
+                            label: const Text('Preview'),
+                          ),
+                          IconButton.filledTonal(
+                            tooltip: 'Clear',
+                            onPressed: _cardBgPath == null ? null : _clearCardBg,
+                            icon: const Icon(Icons.delete_outline_rounded),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: cs.secondaryContainer,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text('Blur ${_blur.toStringAsFixed(0)}',
+                                style: tt.labelLarge?.copyWith(color: cs.onSecondaryContainer)),
+                          ),
+                        ],
+                      ),
+                      if (_cardBgPath != null) ...[
+                        const SizedBox(height: 10),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(
+                            File(_cardBgPath!),
+                            fit: BoxFit.cover,
+                            height: 140,
+                            width: double.infinity,
+                          ),
                         ),
                       ],
-                    ),
-                    if (_cardBgPath != null) ...[
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.file(
-                          File(_cardBgPath!),
-                          fit: BoxFit.cover,
-                          height: 140,
-                          width: double.infinity,
+                      const SizedBox(height: 8),
+                      Slider(
+                        value: _blur,
+                        min: 0,
+                        max: 24,
+                        divisions: 24,
+                        label: '${_blur.round()}',
+                        onChanged: (v) => setState(() => _blur = v),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // ── Details fields on frosted panel over bg ──────────────────
+                Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: radius,
+                    border: Border.all(color: cs.outlineVariant),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cs.shadow.withOpacity(0.06),
+                        blurRadius: 18,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      if (_cardBgPath != null && File(_cardBgPath!).existsSync())
+                        Positioned.fill(
+                          child: Image.file(File(_cardBgPath!), fit: BoxFit.cover),
+                        )
+                      else
+                        Positioned.fill(
+                          child: Container(color: _bgColor ?? cs.surface),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                        child: _Frosted(
+                          blur: _blur,
+                          child: Column(
+                            children: [
+                              TextFormField(
+                                readOnly: true,
+                                onTap: _showCategoryPicker,
+                                decoration: _dec(
+                                  'Category',
+                                  hint: _cat.name,
+                                  icon: Icons.category_outlined,
+                                  onIconTap: _showCategoryPicker,
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              TextField(
+                                controller: _titleC,
+                                decoration: _dec(
+                                  'Title',
+                                  hint: 'e.g., The Pragmatic Programmer',
+                                  icon: Icons.title_outlined,
+                                ),
+                                textInputAction: TextInputAction.next,
+                              ),
+                              const SizedBox(height: 18),
+                              SizedBox(
+                                height: descTargetHeight(context),
+                                child: TextField(
+                                  controller: _descC,
+                                  expands: true,
+                                  maxLines: null,
+                                  minLines: null,
+                                  keyboardType: TextInputType.multiline,
+                                  textAlignVertical: TextAlignVertical.top,
+                                  decoration: _dec(
+                                    'Description',
+                                    hint: 'Optional notes, thoughts, highlights…',
+                                    icon: Icons.notes_outlined,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Slider(
-                      value: _blur,
-                      min: 0,
-                      max: 24,
-                      divisions: 24,
-                      label: '${_blur.round()}',
-                      onChanged: (v) => setState(() => _blur = v),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
 
-              // ── Details fields on frosted panel over bg ──────────────────
-              Container(
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: cs.surface,
-                  borderRadius: radius,
-                  border: Border.all(color: cs.outlineVariant),
-                  boxShadow: [
-                    BoxShadow(
-                      color: cs.shadow.withOpacity(0.06),
-                      blurRadius: 18,
-                      spreadRadius: 1,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  children: [
-                    if (_cardBgPath != null && File(_cardBgPath!).existsSync())
-                      Positioned.fill(
-                        child: Image.file(File(_cardBgPath!), fit: BoxFit.cover),
+                const SizedBox(height: 22),
+
+                // ── Rating ───────────────────────────────────────────────────
+                Container(
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: radius,
+                    border: Border.all(color: cs.outlineVariant),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cs.shadow.withOpacity(0.06),
+                        blurRadius: 18,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 6),
                       ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-                      child: _Frosted(
-                        blur: _blur,
-                        child: Column(
-                          children: [
-                            TextFormField(
-                              readOnly: true,
-                              onTap: _showCategoryPicker,
-                              decoration: _dec(
-                                'Category',
-                                hint: _cat.name,
-                                icon: Icons.category_outlined,
-                                onIconTap: _showCategoryPicker,
-                              ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Rating',
+                              style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: cs.secondaryContainer,
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            const SizedBox(height: 18),
-                            TextField(
-                              controller: _titleC,
-                              decoration: _dec(
-                                'Title',
-                                hint: 'e.g., The Pragmatic Programmer',
-                                icon: Icons.title_outlined,
-                              ),
-                              textInputAction: TextInputAction.next,
+                            child: Text(
+                              '${_rating.round()} / 10',
+                              style: tt.labelLarge?.copyWith(color: cs.onSecondaryContainer),
                             ),
-                            const SizedBox(height: 18),
-                            SizedBox(
-                              height: descTargetHeight(context),
-                              child: TextField(
-                                controller: _descC,
-                                expands: true,
-                                maxLines: null,
-                                minLines: null,
-                                keyboardType: TextInputType.multiline,
-                                textAlignVertical: TextAlignVertical.top,
-                                decoration: _dec(
-                                  'Description',
-                                  hint:
-                                      'Optional notes, thoughts, highlights…',
-                                  icon: Icons.notes_outlined,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
-              ),
+                      const SizedBox(height: 16),
+                      LayoutBuilder(
+                        builder: (ctx, constraints) {
+                          const count = 10;
+                          const itemPadding = 3.0;
+                          const totalPadding = count * (2 * itemPadding);
+                          final maxWidth = constraints.maxWidth;
+                          final available = (maxWidth - totalPadding).clamp(60.0, 4000.0);
+                          final itemSize = (available / count).clamp(18.0, 48.0).toDouble();
 
-              const SizedBox(height: 22),
-
-              // ── Rating ───────────────────────────────────────────────────
-              Container(
-                decoration: BoxDecoration(
-                  color: cs.surface,
-                  borderRadius: radius,
-                  border: Border.all(color: cs.outlineVariant),
-                  boxShadow: [
-                    BoxShadow(
-                      color: cs.shadow.withOpacity(0.06),
-                      blurRadius: 18,
-                      spreadRadius: 1,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Rating',
-                            style:
-                                tt.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                        Container(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: cs.secondaryContainer,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '${_rating.round()} / 10',
-                            style:
-                                tt.labelLarge?.copyWith(color: cs.onSecondaryContainer),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    LayoutBuilder(
-                      builder: (ctx, constraints) {
-                        const count = 10;
-                        const itemPadding = 3.0;
-                        const totalPadding = count * (2 * itemPadding);
-                        final maxWidth = constraints.maxWidth;
-                        final available =
-                            (maxWidth - totalPadding).clamp(60.0, 4000.0);
-                        final itemSize =
-                            (available / count).clamp(18.0, 48.0).toDouble();
-
-                        return Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(count, (i) {
-                            final filled = (i + 1) <= _rating;
-                            return Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 3.0),
-                              child: GestureDetector(
-                                onHorizontalDragUpdate: (d) {
-                                  final box =
-                                      context.findRenderObject() as RenderBox?;
-                                  if (box == null) return;
-                                  final pos =
-                                      box.globalToLocal(d.globalPosition);
-                                  final relative =
-                                      (pos.dx / maxWidth).clamp(0.0, 1.0);
-                                  final newRating = (relative * count)
-                                      .clamp(1, count.toDouble());
-                                  setState(() =>
-                                      _rating = newRating.roundToDouble());
-                                },
-                                onTap: () =>
-                                    setState(() => _rating = (i + 1).toDouble()),
-                                child: Icon(
-                                  Icons.star_rounded,
-                                  size: itemSize,
-                                  color: filled
-                                      ? _colorForIndex(i, count)
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .outlineVariant
-                                          .withOpacity(0.35),
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(count, (i) {
+                              final filled = (i + 1) <= _rating;
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 3.0),
+                                child: GestureDetector(
+                                  onHorizontalDragUpdate: (d) {
+                                    final box = context.findRenderObject() as RenderBox?;
+                                    if (box == null) return;
+                                    final pos = box.globalToLocal(d.globalPosition);
+                                    final relative = (pos.dx / maxWidth).clamp(0.0, 1.0);
+                                    final newRating =
+                                        (relative * count).clamp(1, count.toDouble());
+                                    setState(() => _rating = newRating.roundToDouble());
+                                  },
+                                  onTap: () => setState(() => _rating = (i + 1).toDouble()),
+                                  child: Icon(
+                                    Icons.star_rounded,
+                                    size: itemSize,
+                                    color: filled
+                                        ? _colorForIndex(i, count)
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .outlineVariant
+                                            .withOpacity(0.35),
+                                  ),
                                 ),
-                              ),
-                            );
-                          }),
-                        );
-                      },
-                    ),
-                  ],
+                              );
+                            }),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

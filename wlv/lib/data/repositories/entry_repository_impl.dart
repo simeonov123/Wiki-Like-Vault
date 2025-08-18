@@ -6,7 +6,11 @@ class EntryRepositoryImpl implements EntryRepository {
   final _dao = EntryDao();
 
   @override
-  Future<Entry> save(Entry e) async => e.copyWith(id: await _dao.insert(e));
+Future<Entry> save(Entry e) async {
+  final id = await _dao.insert(e);
+  return e.copyWith(id: id, bgColorHex: e.bgColorHex);
+
+}
 
   @override
   Future<void> saveAll(List<Entry> items) async {
