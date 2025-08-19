@@ -1,3 +1,4 @@
+// destination_page.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,20 +43,16 @@ class DestinationPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bool isEntries = ball.navIndex == 1;
-    final File? bgFile = isEntries ? ref.watch(entryBgProvider) : null;
+    final File? bgFile = ref.watch(entryBgProvider); // shared background
 
-    final Widget background = isEntries
-        ? (bgFile != null
-            ? Image.file(
-                bgFile,
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-              )
-            : Container(color: ball.color))
+    final Widget background = (bgFile != null)
+        ? Image.file(bgFile, fit: BoxFit.cover, gaplessPlayback: true)
         : Container(color: ball.color);
 
     final Widget body =
         isEntries ? const EntriesListBody() : const JournalListBody();
+
+    final double overlayOpacity = isEntries ? 0.35 : 0.30;
 
     return Scaffold(
       appBar: isEntries
@@ -85,7 +82,8 @@ class DestinationPage extends ConsumerWidget {
         fit: StackFit.expand,
         children: [
           background,
-          if (isEntries) Container(color: Colors.black.withOpacity(0.35)),
+          if (bgFile != null)
+            Container(color: Colors.black.withOpacity(overlayOpacity)),
           body,
         ],
       ),

@@ -36,7 +36,7 @@ Future<void> showEntryDetailsSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    showDragHandle: true,
+    showDragHandle: false, // 🚫 remove system handle/white bar
     backgroundColor: entry.imagePaths.isNotEmpty
         ? Theme.of(context).colorScheme.surface
         : entry.effectiveColor, // fallback to entry color if no image
@@ -180,9 +180,9 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
               SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   16,
-                  8,
+                  20, // ⬆️ add top padding above the container
                   16,
-                  16 + MediaQuery.of(context).padding.bottom,
+                  MediaQuery.of(context).padding.bottom + 12,
                 ),
                 child: Center(
                   child: ConstrainedBox(
@@ -194,11 +194,28 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
                         _OuterPanel(
                           baseColor: _entry.effectiveColor,
                           blur: blur, // blur is harmless even if panel is solid
-                          child: Column(
-                            children: [
-                              // Title (solid card)
-                              _CardSection(
-                                child: Row(
+                          child: Padding(
+                            padding: const EdgeInsets.all(0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // ✅ Single (internal) drag bar only
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6, bottom: 10),
+                                  child: Center(
+                                    child: Container(
+                                      width: 36,
+                                      height: 4,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade400,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                                // Title row
+                                Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Expanded(
@@ -239,39 +256,35 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
                                       ),
                                   ],
                                 ),
-                              ),
-                              const SizedBox(height: 12),
 
-                              // Meta (solid card)
-                              _CardSection(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 8),
-                                child: Column(
-                                  children: [
-                                    _InfoRow(
-                                      icon: Icons.category_outlined,
-                                      label: 'Category',
-                                      value: _entry.category.name,
-                                    ),
-                                    _InfoRow(
-                                      icon: Icons.event_outlined,
-                                      label: 'Created',
-                                      value:
-                                          '${_fmtDate(_entry.createdAt)}  ${_fmtTime(_entry.createdAt)}',
-                                    ),
-                                  ],
+                                // Category and Created
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.category_outlined, size: 16, color: cs.onSurfaceVariant),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _entry.category.name,
+                                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Icon(Icons.event_outlined, size: 16, color: cs.onSurfaceVariant),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${_fmtDate(_entry.createdAt)}  ${_fmtTime(_entry.createdAt)}',
+                                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 12),
+                                const SizedBox(height: 12),
 
-                              // Description (solid card, full width, scrollable)
-                              _CardSection(
-                                child: Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                                // Description (scrollable)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         'Description',
@@ -279,7 +292,7 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 0),
                                       ConstrainedBox(
                                         constraints: BoxConstraints(
                                           maxHeight: maxDescHeight,
@@ -307,48 +320,45 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
                                     ],
                                   ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 16),
+
+                                // Actions (Edit/Delete)
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: FilledButton.icon(
+                                        icon: const Icon(Icons.edit_rounded),
+                                        label: const Text('Edit'),
+                                        style: FilledButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(14),
+                                          ),
+                                        ),
+                                        onPressed: _edit,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: FilledButton.icon(
+                                        icon: const Icon(Icons.delete_outline_rounded),
+                                        label: const Text('Delete'),
+                                        style: FilledButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 14),
+                                          backgroundColor: cs.errorContainer,
+                                          foregroundColor: cs.onErrorContainer,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(14),
+                                          ),
+                                        ),
+                                        onPressed: _confirmDelete,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Actions
-                        Row(
-                          children: [
-                            Expanded(
-                              child: FilledButton.icon(
-                                icon: const Icon(Icons.edit_rounded),
-                                label: const Text('Edit'),
-                                style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                                onPressed: _edit,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: FilledButton.icon(
-                                icon: const Icon(Icons.delete_outline_rounded),
-                                label: const Text('Delete'),
-                                style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 14),
-                                  backgroundColor: cs.errorContainer,
-                                  foregroundColor: cs.onErrorContainer,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                                onPressed: _confirmDelete,
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),
@@ -392,8 +402,7 @@ class _InfoRow extends StatelessWidget {
           Icon(icon, size: 18, color: cs.onSurfaceVariant),
           const SizedBox(width: 10),
           Expanded(
-            child:
-                Text(label, style: tt.bodyMedium?.copyWith(color: cs.onSurface)),
+            child: Text(label, style: tt.bodyMedium?.copyWith(color: cs.onSurface)),
           ),
           const SizedBox(width: 12),
           Flexible(
@@ -411,7 +420,6 @@ class _InfoRow extends StatelessWidget {
 }
 
 /// Outer **solid darker** panel that sits above the image/color background.
-/// Still keeps a border and (optional) blur for aesthetic consistency.
 class _OuterPanel extends StatelessWidget {
   final Widget child;
   final double blur;
@@ -433,7 +441,7 @@ class _OuterPanel extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: Container(
           decoration: BoxDecoration(
-            color: panelColor,                 // ← solid, no opacity
+            color: panelColor, // solid
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: cs.outlineVariant),
           ),
@@ -449,10 +457,12 @@ class _OuterPanel extends StatelessWidget {
 class _CardSection extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
+  final double blur;
 
   const _CardSection({
     required this.child,
     this.padding,
+    this.blur = 8,
   });
 
   @override
@@ -460,7 +470,7 @@ class _CardSection extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: cs.surface, // lighter solid background
+        color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: cs.outlineVariant),
       ),

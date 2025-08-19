@@ -8,6 +8,9 @@ class Ball {
   final int navIndex;
   bool isHeld;
 
+  // Tracks last time (ms) when this ball triggered haptics
+  int lastHapticMs;
+
   Ball({
     required this.pos,
     required this.vel,
@@ -17,5 +20,6 @@ class Ball {
     required this.navIndex,
     required this.heroTag,
     this.isHeld = false,
+    this.lastHapticMs = 0, // default: never triggered
   });
 }

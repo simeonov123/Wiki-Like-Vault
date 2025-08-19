@@ -1,3 +1,4 @@
+// home_page.dart
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +34,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   ];
   static const _titles = ['Home', 'Entries', 'Journal'];
 
+  // ---- background image controls (Entries tab) ----
   Future<void> _pickBg() async {
     final picker = ImagePicker();
     final x = await picker.pickImage(source: ImageSource.gallery);
@@ -66,53 +68,40 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // ⬇️ we always watch the entries background,
+    // and show it behind ALL tabs (home + entries + journal)
     final File? bgFile = ref.watch(entryBgProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_titles[_idx]),
-        actions: [
-          if (_idx == 1) ...[
-            IconButton(
-              tooltip: 'Filter & sort',
-              icon: const Icon(Icons.filter_list_rounded),
-              onPressed: () => showEntriesFilterSheet(context: context, ref: ref),
-            ),
-            IconButton(
-              tooltip: 'Change background',
-              icon: const Icon(Icons.photo),
-              onPressed: _pickBg,
-            ),
-            IconButton(
-              tooltip: 'Reset background',
-              icon: const Icon(Icons.refresh),
-              onPressed: _clearBg,
-            ),
-            if (kDebugMode)
-              IconButton(
-                tooltip: 'Seed 55 mock entries',
-                onPressed: _seed55,
-                icon: const Icon(Icons.cloud_download_rounded),
-              ),
-          ],
-        ],
-      ),
+    // overlay per tab for readability (slightly stronger on Entries)
+    final double overlayOpacity = switch (_idx) {
+      0 => 0.25, // Home (lighter so the welcome UI pops)
+      1 => 0.35, // Entries
+      2 => 0.30, // Journal
+      _ => 0.30,
+    };
+
+  return Scaffold(
       body: Stack(
         children: [
-          if (_idx == 1) ...[
-            if (bgFile != null)
-              Positioned.fill(
-                child: Image.file(
-                  bgFile,
-                  fit: BoxFit.cover,
-                  gaplessPlayback: true,
-                ),
-              ),
+          // ⬇️ shared background behind ALL tabs
+          if (bgFile != null)
             Positioned.fill(
-              child: Container(color: Colors.black.withOpacity(0.35)),
+              child: Image.file(
+                bgFile,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+              ),
             ),
-          ],
+          // soft overlay for contrast
+          if (bgFile != null)
+            Positioned.fill(
+              child: Container(color: Colors.black.withOpacity(overlayOpacity)),
+            ),
+
+          // tab content
           IndexedStack(index: _idx, children: _tabs),
+
+          // floating nav balls only on the Home tab
           if (_idx == 0) const FloatingNavBalls(),
         ],
       ),
@@ -131,8 +120,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             onPressed: () async {
               await Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => const AddJournalEntryPage()),
+                MaterialPageRoute(builder: (_) => const AddJournalEntryPage()),
               );
               ref.invalidate(journalsFutureProvider);
             },
