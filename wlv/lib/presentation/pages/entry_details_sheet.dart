@@ -33,18 +33,20 @@ Future<void> showEntryDetailsSheet(
   Entry entry,
 ) async {
   await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: false, // 🚫 remove system handle/white bar
-    backgroundColor: entry.imagePaths.isNotEmpty
-        ? Theme.of(context).colorScheme.surface
-        : entry.effectiveColor, // fallback to entry color if no image
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (ctx) => EntryDetailsSheet(entry: entry),
-  );
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  showDragHandle: false, // ⬅️ turn OFF the system handle
+  backgroundColor: entry.imagePaths.isNotEmpty
+      ? Theme.of(context).colorScheme.surface
+      : entry.effectiveColor,
+  shape: const RoundedRectangleBorder(
+    borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+  ),
+  clipBehavior: Clip.antiAlias, // ⬅️ so shape is respected
+  builder: (ctx) => EntryDetailsSheet(entry: entry),
+);
+
 }
 
 class EntryDetailsSheet extends ConsumerStatefulWidget {
@@ -176,13 +178,13 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
                 Positioned.fill(
                   child: Image.file(File(path), fit: BoxFit.cover),
                 ),
-
+              
               SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   16,
-                  20, // ⬆️ add top padding above the container
+                  14, // ⬆️ add top padding above the container
                   16,
-                  MediaQuery.of(context).padding.bottom + 12,
+                  MediaQuery.of(context).padding.bottom + 16,
                 ),
                 child: Center(
                   child: ConstrainedBox(
@@ -190,18 +192,8 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // ───────── Outer SOLID darker panel for contrast ─────────
-                        _OuterPanel(
-                          baseColor: _entry.effectiveColor,
-                          blur: blur, // blur is harmless even if panel is solid
-                          child: Padding(
-                            padding: const EdgeInsets.all(0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // ✅ Single (internal) drag bar only
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 6, bottom: 10),
+                        Padding(
+                                  padding: const EdgeInsets.only(top: 0, bottom: 20),
                                   child: Center(
                                     child: Container(
                                       width: 36,
@@ -213,6 +205,17 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
                                     ),
                                   ),
                                 ),
+                        // ───────── Outer SOLID darker panel for contrast ─────────
+                        _OuterPanel(
+                          baseColor: _entry.effectiveColor,
+                          blur: blur, // blur is harmless even if panel is solid
+                          child: Padding(
+                            padding: const EdgeInsets.all(0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // ✅ Single (internal) drag bar only
+                                
 
                                 // Title row
                                 Row(
