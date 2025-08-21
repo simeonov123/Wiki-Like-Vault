@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
+import 'package:palette_generator/palette_generator.dart';
 
 import '../providers/entry_providers.dart';
 import '../../domain/entities/entry.dart';
@@ -61,11 +63,35 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
 
   final ScrollController _descScroll = ScrollController();
 
+  Color _fg = Colors.white;         // default while computing
+  Color _fgMuted = Colors.white70;  // derived
+
+
   @override
   void initState() {
     super.initState();
     _entry = widget.entry;
+    _computeTextColor();
+
   }
+
+
+  Future<void> _computeTextColor() async {
+  final String? path =
+      _entry.imagePaths.isNotEmpty ? _entry.imagePaths.first : null;
+  final file = (path != null) ? File(path) : null;
+
+  final c = await textColorFromImageOrSolid(
+    solidBg: _entry.effectiveColor,
+    imageFile: file,
+  );
+  if (!mounted) return;
+  setState(() {
+    _fg = c;
+    _fgMuted = c.withOpacity(0.78);
+  });
+}
+
 
   @override
   void dispose() {
@@ -228,6 +254,7 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
                                         overflow: TextOverflow.ellipsis,
                                         style: tt.titleLarge?.copyWith(
                                           fontWeight: FontWeight.w800,
+                                          color: _fg,
                                         ),
                                       ),
                                     ),
@@ -268,18 +295,18 @@ _ScorePill(
                                   padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.category_outlined, size: 16, color: cs.onSurfaceVariant),
+                                      Icon(Icons.category_outlined, size: 16, color: _fgMuted),
                                       const SizedBox(width: 4),
                                       Text(
                                         _entry.category.name,
-                                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                        style: tt.bodySmall?.copyWith(color: _fgMuted),
                                       ),
                                       const SizedBox(width: 16),
-                                      Icon(Icons.event_outlined, size: 16, color: cs.onSurfaceVariant),
+                                      Icon(Icons.event_outlined, size: 16, color: _fgMuted),
                                       const SizedBox(width: 4),
                                       Text(
                                         '${_fmtDate(_entry.createdAt)}  ${_fmtTime(_entry.createdAt)}',
-                                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                        style: tt.bodySmall?.copyWith(color: _fgMuted),
                                       ),
                                     ],
                                   ),
@@ -296,6 +323,7 @@ _ScorePill(
                                         'Description',
                                         style: tt.titleMedium?.copyWith(
                                           fontWeight: FontWeight.w700,
+                                          color: _fg,
                                         ),
                                       ),
                                       const SizedBox(height: 0),
@@ -317,7 +345,7 @@ _ScorePill(
                                               alignment: Alignment.centerLeft,
                                               child: Text(
                                                 _entry.description,
-                                                style: tt.bodyLarge,
+                                                style: tt.bodyLarge?.copyWith(color: _fgMuted),
                                               ),
                                             ),
                                           ),
@@ -584,4 +612,35 @@ class _ScorePill extends StatelessWidget {
       ),
     );
   }
+}
+
+
+
+
+/// Returns a high-contrast text color (black/white) based on an image's
+/// dominant color. If the image doesn't exist, falls back to [solidBg].
+Future<Color> textColorFromImageOrSolid({
+  required Color solidBg,
+  File? imageFile,
+  double luminanceThreshold = 0.53, // higher → more likely black text
+}) async {
+  Color base = solidBg;
+
+  if (imageFile != null && await imageFile.exists()) {
+    try {
+      final palette = await PaletteGenerator.fromImageProvider(
+        FileImage(imageFile),
+        size: const Size(200, 120), // small sample for speed
+        maximumColorCount: 12,
+      );
+      base = palette.dominantColor?.color ?? base;
+    } catch (_) {
+      // swallow and use fallback solid color
+    }
+  }
+
+  // Choose black/white for maximum contrast
+  return base.computeLuminance() > luminanceThreshold
+      ? Colors.black
+      : Colors.white;
 }
