@@ -231,32 +231,35 @@ class _EntryDetailsSheetState extends ConsumerState<EntryDetailsSheet> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
+                                    // const SizedBox(width: 8),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
+                                        horizontal: 0,
+                                        vertical: 0,
                                       ),
                                       decoration: BoxDecoration(
                                         color: cs.secondaryContainer,
                                         borderRadius: BorderRadius.circular(12),
                                       ),
-                                      child: Text(
-                                        '${_entry.rating} / 10',
-                                        style: tt.labelLarge?.copyWith(
-                                          color: cs.onSecondaryContainer,
-                                        ),
-                                      ),
+                                      child: 
+                                      // inside your row, where you show the rating:
+_ScorePill(
+  score: _entry.rating,         // 0..10
+  maxScore: 10,
+  size: ScorePillSize.small,   // small | medium | large
+  showStar: true,
+)
+
                                     ),
-                                    const SizedBox(width: 4),
-                                    if (path != null)
-                                      IconButton(
-                                        tooltip: 'Preview image',
-                                        onPressed: _preview,
-                                        icon: const Icon(
-                                          Icons.zoom_out_map_rounded,
-                                        ),
-                                      ),
+                                    // const SizedBox(width: 4),
+                                    // if (path != null)
+                                    //   IconButton(
+                                    //     tooltip: 'Preview image',
+                                    //     onPressed: _preview,
+                                    //     icon: const Icon(
+                                    //       Icons.zoom_out_map_rounded,
+                                    //     ),
+                                    //   ),
                                   ],
                                 ),
 
@@ -479,6 +482,106 @@ class _CardSection extends StatelessWidget {
       ),
       padding: padding ?? const EdgeInsets.fromLTRB(12, 12, 12, 12),
       child: child,
+    );
+  }
+}
+
+enum ScorePillSize { small, medium, large }
+
+class _ScorePill extends StatelessWidget {
+  final int score;
+  final int maxScore;
+  final ScorePillSize size;
+  final bool showStar;
+
+  const _ScorePill({
+    required this.score,
+    this.maxScore = 10,
+    this.size = ScorePillSize.medium,
+    this.showStar = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    // Sizing presets
+    final double padV, padH, radius, iconSize, fontSize, borderWidth;
+    switch (size) {
+      case ScorePillSize.small:
+        padV = 4; padH = 8; radius = 10; iconSize = 14; fontSize = 11; borderWidth = 1;
+        break;
+      case ScorePillSize.medium:
+        padV = 6; padH = 10; radius = 12; iconSize = 16; fontSize = 13; borderWidth = 1.2;
+        break;
+      case ScorePillSize.large:
+        padV = 8; padH = 12; radius = 14; iconSize = 18; fontSize = 15; borderWidth = 1.4;
+        break;
+    }
+
+    // Clamp and map score to a color (red → amber → green)
+    final s = score.clamp(0, maxScore);
+    final t = maxScore == 0 ? 0.0 : s / maxScore;
+    final Color low   = const Color(0xFFEF5350); // red
+    final Color mid   = const Color.fromARGB(255, 189, 145, 11); // amber
+    final Color high  = const Color.fromARGB(255, 255, 191, 1); // green
+    final Color gradStart = t < 0.5
+        ? Color.lerp(low,  mid, t / 0.5)!
+        : Color.lerp(mid, high, (t - 0.5) / 0.5)!;
+
+    // Slightly darker end for subtle depth
+    final HSLColor hsl = HSLColor.fromColor(gradStart);
+    final Color gradEnd = hsl.withLightness((hsl.lightness - 0.10).clamp(0.0, 1.0)).toColor();
+
+    // Choose readable text color (on dark-ish gradient use white)
+    final Color textColor = Colors.white;
+
+    return Semantics(
+      label: 'Rating $s out of $maxScore',
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [gradStart, gradEnd],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.18),
+            width: borderWidth,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: gradStart.withOpacity(0.25),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showStar) ...[
+                Icon(Icons.star_rounded, size: iconSize, color: textColor),
+                const SizedBox(width: 6),
+              ],
+              // Score text with tiny fraction suppressed
+              Text(
+                '$s / $maxScore',
+                style: tt.labelLarge?.copyWith(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.2,
+                  color: textColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
